@@ -1,19 +1,106 @@
 package crypto
 
-import "crypto/ed25519"
+import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
+	"io"
+)
+
+const (
+	privateKeyLen = 64
+	publicKeyLen  = 32
+	seedLen       = 32
+	addressLen    = 20
+)
 
 type PrivateKey struct {
 	key ed25519.PrivateKey
+}
+
+type PublicKey struct {
+	key ed25519.PublicKey
+}
+
+type Signature struct {
+	value []byte
+}
+
+type Address struct {
+	value []byte
+}
+
+func NewPrivateKeyFromString(s string) *PrivateKey {
+	key, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	if len(key) != privateKeyLen {
+		panic("invalid private key length")
+	}
+	return NewPrivateKeyFromSeed(key)
+}
+
+func NewPrivateKeyFromSeed(seed []byte) *PrivateKey {
+	if len(seed) != seedLen {
+		panic("invalid seed length")
+	}
+	return &PrivateKey{
+		key: ed25519.NewKeyFromSeed(seed),
+	}
+}
+
+func GeneratePrivateKey() *PrivateKey {
+	seed := make([]byte, seedLen)
+	_, err := io.ReadFull(rand.Reader, seed)
+	if err != nil {
+		panic(err)
+	}
+	return &PrivateKey{
+		key: ed25519.NewKeyFromSeed(seed),
+	}
 }
 
 func (p *PrivateKey) Bytes() []byte {
 	return p.key
 }
 
-func (p *PrivateKey) Sign(msg []byte) []byte {
-	return ed25519.Sign(p.key, msg)
+func (p *PrivateKey) Sign(msg []byte) *Signature {
+	return &Signature{
+		value: ed25519.Sign(p.key, msg),
+	}
 }
 
-type PublicKey struct {
-	key ed25519.PublicKey
+func (p *PrivateKey) Public() *PublicKey {
+	buffer := make([]byte, publicKeyLen)
+	copy(buffer, p.key[32:])
+	return &PublicKey{
+		key: buffer,
+	}
+}
+
+func (p *PublicKey) Bytes() []byte {
+	return p.key
+}
+
+func (p *PublicKey) Address() Address {
+	return Address{
+		value: p.key[len(p.key)-addressLen:],
+	}
+}
+
+func (s *Signature) Bytes() []byte {
+	return s.value
+}
+
+func (s *Signature) Verify(pubKey *PublicKey, msg []byte) bool {
+	return ed25519.Verify(pubKey.key, msg, s.value)
+}
+
+func (a Address) Bytes() []byte {
+	return a.value
+}
+
+func (a Address) String() string {
+	return hex.EncodeToString(a.value)
 }
